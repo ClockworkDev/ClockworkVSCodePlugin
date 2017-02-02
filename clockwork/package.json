@@ -12,7 +12,8 @@
   ],
   "activationEvents": [
     "onCommand:extension.createProject",
-    "onCommand:extension.buildProject"
+    "onCommand:extension.buildProject",
+    "onCommand:extension.deployPackage"
   ],
   "main": "./extension",
   "contributes": {
@@ -24,6 +25,10 @@
       {
         "command": "extension.buildProject",
         "title": "Build Clockwork project"
+      },
+      {
+        "command": "extension.deployPackage",
+        "title": "Deploy Clockwork project"
       }
     ]
   },
