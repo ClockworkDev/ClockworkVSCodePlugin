@@ -45,6 +45,6 @@
     "@types/mocha": "^2.2.32"
   },
   "dependencies": {
-    "clockwork-tools": "^1.0.0"
+    "clockwork-tools": ">=1.2.0"
   }
 }

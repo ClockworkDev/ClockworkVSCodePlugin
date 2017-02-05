@@ -7,6 +7,7 @@ var exec = require('child_process').exec;
 // your extension is activated the very first time the command is executed
 function activate(context) {
     const serverPort = 3000;
+    var deployServer=null;
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "clockwork" is now active!');
@@ -41,13 +42,16 @@ function activate(context) {
     context.subscriptions.push(disposable);
 
     disposable = vscode.commands.registerCommand('extension.deployPackage', function () {
-        var manifest = readManifest(); ``
+        var manifest = readManifest(); 
         if (manifest != null) {
             buildProject(function (error, stdout, stderr) {
                 if (!error) {
-                    // localServer.setDeployPackage(vscode.workspace.rootPath + "/"+manifest.name+".cw");
+                    if(!deployServer){
+                        deployServer=Server();
+                    }
+                    deployServer.setDeployPackage(vscode.workspace.rootPath + "/" + manifest.name+".cw");
                     const opn = require('opn');
-                    opn("cwrt://" + serverPort + "/deployPackage");
+                    opn("cwrt://localhost:" + serverPort + "/deployPackage");
                 }
             });
         }
@@ -65,6 +69,21 @@ function activate(context) {
         }
         return manifest;
     }
+
+    var Server = function(){
+        var file=null;
+        var app = require('express')();
+        var server = require('http').Server(app);
+        server.listen(serverPort);
+        app.get('/deployPackage', function (req, res) {
+            res.sendFile(file);
+        });
+        return {
+            setDeployPackage: function (someFile) {
+                file = someFile;
+            }
+        }
+    };
 
 
 }
