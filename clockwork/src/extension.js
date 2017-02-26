@@ -3,11 +3,25 @@
 var vscode = require('vscode');
 var exec = require('child_process').exec;
 
+
+const initialConfigurations = {
+    version: '0.1.0',
+    configurations: [
+        {
+            type: 'clockwork',
+            request: 'launch',
+            name: 'Clockwork',
+            stopOnEntry: false,
+            program: "${workspaceRoot}/manifest.json"
+        }
+    ]
+}
+
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 function activate(context) {
     const serverPort = 3000;
-    var deployServer=null;
+    var deployServer = null;
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "clockwork" is now active!');
@@ -32,7 +46,7 @@ function activate(context) {
         exec(thisExtension.extensionPath + "/node_modules/.bin/clockwork build ", { cwd: vscode.workspace.rootPath }, callback);
     }
 
-    disposable =vscode.commands.registerCommand('extension.buildProject', function () {
+    disposable = vscode.commands.registerCommand('extension.buildProject', function () {
         buildProject(function (error, stdout, stderr) {
             if (!error) {
                 vscode.window.showInformationMessage(`Project built successfully`);
@@ -42,14 +56,14 @@ function activate(context) {
     context.subscriptions.push(disposable);
 
     disposable = vscode.commands.registerCommand('extension.deployPackage', function () {
-        var manifest = readManifest(); 
+        var manifest = readManifest();
         if (manifest != null) {
             buildProject(function (error, stdout, stderr) {
                 if (!error) {
-                    if(!deployServer){
-                        deployServer=Server();
+                    if (!deployServer) {
+                        deployServer = Server();
                     }
-                    deployServer.setDeployPackage(vscode.workspace.rootPath + "/" + manifest.name+".cw");
+                    deployServer.setDeployPackage(vscode.workspace.rootPath + "/" + manifest.name + ".cw");
                     const opn = require('opn');
                     opn("cwrt://localhost:" + serverPort + "/deployPackage");
                 }
@@ -57,7 +71,7 @@ function activate(context) {
         }
     });
     context.subscriptions.push(disposable);
-    
+
 
     function readManifest(safeMode) {
         try {
@@ -70,8 +84,8 @@ function activate(context) {
         return manifest;
     }
 
-    var Server = function(){
-        var file=null;
+    var Server = function () {
+        var file = null;
         var app = require('express')();
         var server = require('http').Server(app);
         server.listen(serverPort);
@@ -84,6 +98,16 @@ function activate(context) {
             }
         }
     };
+
+    //Debugger
+
+	context.subscriptions.push(vscode.commands.registerCommand('extension.provideInitialConfigurations', () => {
+		return [
+			'// Use IntelliSense to learn about possible Clockwork debug attributes.',
+			'// Hover to view descriptions of existing attributes.',
+			JSON.stringify(initialConfigurations, null, '\t')
+		].join('\n');
+	}));
 
 
 }

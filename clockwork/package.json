@@ -8,14 +8,16 @@
     "vscode": "^1.5.0"
   },
   "categories": [
+    "Debuggers",
     "Other"
   ],
   "activationEvents": [
     "onCommand:extension.createProject",
     "onCommand:extension.buildProject",
-    "onCommand:extension.deployPackage"
+    "onCommand:extension.deployPackage",
+    "onCommand:extension.provideInitialConfigurations"
   ],
-  "main": "./extension",
+  "main": "./src/extension.js",
   "contributes": {
     "commands": [
       {
@@ -30,21 +32,71 @@
         "command": "extension.deployPackage",
         "title": "Deploy Clockwork project"
       }
+    ],
+    "breakpoints": [
+      {
+        "language": "javascript"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "clockwork",
+        "label": "Clockwork Runtime Debugger",
+        "program": "./out/debugger.js",
+        "runtime": "node",
+        "variables": {},
+        "configurationSnippets": [
+          {
+            "label": "Clockwork Runtime: Launch",
+            "description": "A new configuration for launching a Clockwork Runtime debug program",
+            "body": {
+              "type": "clockwork",
+              "request": "launch",
+              "name": "${2:Launch Program}",
+              "program": "^\"\\${workspaceRoot}/manifest.json\""
+            }
+          }
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to a manifest.",
+                "default": "${workspaceRoot}/manifest.json"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch.",
+                "default": true
+              }
+            }
+          }
+        },
+        "initialConfigurations": "extension.provideInitialConfigurations"
+      }
     ]
   },
   "scripts": {
+    "prepublish": "node ./node_modules/typescript/bin/tsc -p ./src",
+    "compile": "node ./node_modules/typescript/bin/tsc -p ./src",
+    "watch": "node ./node_modules/typescript/bin/tsc -w -p ./src",
     "postinstall": "node ./node_modules/vscode/bin/install",
     "test": "node ./node_modules/vscode/bin/test"
   },
   "devDependencies": {
-    "typescript": "^2.0.3",
     "vscode": "^1.0.0",
-    "mocha": "^2.3.3",
-    "eslint": "^3.6.0",
     "@types/node": "^6.0.40",
-    "@types/mocha": "^2.2.32"
+    "@types/es6-collections": "^0.5.29"
   },
   "dependencies": {
-    "clockwork-tools": ">=1.2.0"
+    "clockwork-tools": ">=1.3.0",
+    "socket.io": "^1.7.3",
+    "typescript": "^2.0.10",
+    "vscode-debugadapter": "^1.17.0",
+    "vscode-debugprotocol": "^1.17.0"
   }
 }
