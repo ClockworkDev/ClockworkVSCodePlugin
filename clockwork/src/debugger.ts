@@ -1,8 +1,6 @@
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/
-console.log("doing stuff");
-
 import {
 	DebugSession,
 	InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Event,
@@ -11,8 +9,6 @@ import {
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { readFileSync } from 'fs';
 import { basename } from 'path';
-
-
 
 
 function readManifest(path) {
@@ -35,6 +31,7 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
 	stopOnEntry?: boolean;
 }
 
+
 class ClockworkDebugSession extends DebugSession {
 	//Clockwork stuff
 	private opn = require('opn');
@@ -43,9 +40,7 @@ class ClockworkDebugSession extends DebugSession {
 	private io = require('socket.io')();
 
 
-	private debuglog = function (x) {
-		this.opn("http://www.bing.com/search?q=" + x);
-	}
+
 
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
 	private static THREAD_ID = 1;
@@ -88,10 +83,10 @@ class ClockworkDebugSession extends DebugSession {
 		this.setDebuggerLinesStartAt1(false);
 		this.setDebuggerColumnsStartAt1(false);
 
-		var session=this;
+		var session = this;
 		this.io.on('connection', function (client) {
-			session.debuglog("Connection established")
-		 });
+			console.log("Connection established");
+		});
 		this.io.listen(this.serverPort);
 	}
 
@@ -120,7 +115,6 @@ class ClockworkDebugSession extends DebugSession {
 	}
 
 	protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
-
 		this._sourceFile = args.program;
 		this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
 		var manifest = readManifest(args.program);
@@ -142,11 +136,12 @@ class ClockworkDebugSession extends DebugSession {
 
 		var path = args.source.path;
 		var clientLines = args.lines;
-
 		// read file contents into array for direct access
 		var lines = readFileSync(path).toString().split('\n');
 
 		var breakpoints = new Array<Breakpoint>();
+
+		var parser = new ClockworkParser(lines);
 
 		// verify breakpoint locations
 		for (var i = 0; i < clientLines.length; i++) {
@@ -155,6 +150,10 @@ class ClockworkDebugSession extends DebugSession {
 			if (l < lines.length) {
 				const line = lines[l].trim();
 				// if a line is empty or starts with '+' we don't allow to set a breakpoint but move the breakpoint down
+				var {component, event, eventLine} = parser.getComponentEvent(l);
+				console.log(eventLine);
+				l = eventLine;
+				console.log(component, event);
 				if (line.length == 0 || line.indexOf("+") == 0)
 					l++;
 				// if a line starts with '-' we don't allow to set a breakpoint but move the breakpoint up
@@ -391,3 +390,168 @@ class ClockworkDebugSession extends DebugSession {
 
 DebugSession.run(ClockworkDebugSession);
 
+class ClockworkParser {
+	private lines: String[];
+	public constructor(lines) {
+		this.lines = lines;
+	}
+	private getLineLength(n) {
+		return this.lines[n].length;
+	}
+	private getCharAt(p: CursorPosition) {
+		return this.lines[p.line][p.character];
+	}
+	public getComponentEvent(n: Number) {
+		var p = new CursorPosition(n, this.getLineLength(n));
+		var nextComponentStartsAfter = this.findPreviousInstanceOf(/CLOCKWORKRT.components.push/g, p);
+		do {
+			var componentStart = this.findNextInstanceOf(/{/g, nextComponentStartsAfter);
+			var componentEnd = this.findMatchingPair("{", "}", componentStart);
+			nextComponentStartsAfter = componentEnd;
+		} while (p.line > componentEnd.line);
+		var component;
+		eval("component = " + this.substring(componentStart, componentEnd));
+		var componentName = component.name;
+		var nextEventStartsAfter = this.findJSproperty(componentStart, "events");
+		do {
+			var eventStart = this.findNextInstanceOf(/{/g, nextEventStartsAfter);
+			var eventEnd = this.findMatchingPair("{", "}", eventStart);
+			nextEventStartsAfter = eventEnd;
+		} while (p.line > eventEnd.line);
+		var event;
+		eval("event = " + this.substring(eventStart, eventEnd));
+		var eventName = event.name;
+		var eventNamePosition = this.findJSproperty(eventStart, "name");
+		return { component: componentName, event: eventName, eventLine: eventNamePosition.line };
+	}
+	private findParentEvent(p: CursorPosition): EventInfo {
+		return new EventInfo("", 0);
+	}
+
+	private findPreviousInstanceOf(pattern, p: CursorPosition): CursorPosition {
+		if (p.line < 0) {
+			return null;
+		} else {
+			var result, lastIndex = null;
+			var remainingLine = this.lines[p.line].substring(0, p.character - 1);
+			while ((result = pattern.exec(remainingLine))) {
+				lastIndex = result.index;
+			}
+
+			if (lastIndex != null) {
+				return new CursorPosition(p.line, lastIndex);
+			} else {
+				return this.findPreviousInstanceOf(pattern, new CursorPosition(p.line - 1, this.getLineLength(p.line - 1) - 1));
+			}
+		}
+	}
+	private findNextInstanceOf(pattern, p: CursorPosition): CursorPosition {
+		if (p.line >= this.lines.length) {
+			return null;
+		} else {
+			var result, firstIndex = null;
+			var remainingLine = this.lines[p.line].substring(p.character, this.getLineLength(p.line));
+			while ((result = pattern.exec(remainingLine))) {
+				firstIndex = result.index;
+				break;
+			}
+
+			if (firstIndex != null) {
+				return new CursorPosition(p.line, firstIndex);
+			} else {
+				return this.findNextInstanceOf(pattern, new CursorPosition(p.line + 1, 0));
+			}
+		}
+	}
+	private findMatchingPair(open, close, p: CursorPosition) {
+		if (this.getCharAt(p) != open) {
+			return null; //If this happens, you are not using me correctly dude
+		}
+		var depth = 1;
+		var currentPosition = p.character + 1;
+		for (var i = p.line; i < this.lines.length; i++) {
+			while (currentPosition < this.getLineLength(i)) {
+				var currentPos = new CursorPosition(i, currentPosition);
+				switch (this.getCharAt(currentPos)) {
+					case open:
+						depth++;
+						break;
+					case close:
+						depth--;
+						if (depth == 0) {
+							return currentPos;
+						}
+						break;
+				}
+				currentPosition++;
+			}
+			currentPosition = 0;
+		}
+		return null;//Not found!
+	}
+
+	private findJSproperty(p: CursorPosition, property) {
+		var depth = 0;
+		var currentPosition = p.character + 1;
+		for (var i = p.line; i < this.lines.length; i++) {
+			while (currentPosition < this.getLineLength(i)) {
+				var currentPos = new CursorPosition(i, currentPosition);
+				switch (this.getCharAt(currentPos)) {
+					case "{":
+						depth++;
+						break;
+					case "}":
+						depth--;
+						break;
+					default:
+						var remainingString = this.lines[i].substr(currentPosition);
+						if (remainingString.indexOf(property) == 0 && depth == 0) {
+							return currentPos;
+						}
+						break;
+				}
+				currentPosition++;
+			}
+			currentPosition = 0;
+		}
+		return null;//Not found!
+	}
+
+	private substring(start: CursorPosition, end: CursorPosition): string {
+		var substring = this.lines.filter(function (x, i) {
+			return i > start.line && i < end.line;
+		}).join("\n");
+		substring = this.lines[start.line].substring(start.character) + "\n" + substring + "\n" + this.lines[end.line].substring(0, end.character + 1);
+		return substring
+	}
+}
+
+
+class EventInfo {
+	public event;
+	public eventLine;
+	public constructor(event: String, eventLine: Number) {
+		this.event = event;
+		this.eventLine = eventLine;
+	}
+}
+
+class CursorPosition {
+	public line;
+	public character;
+	public constructor(line: Number, character: Number) {
+		this.line = line;
+		this.character = character;
+	}
+}
+
+class ClockworkBreakPoint {
+	public line;
+	public component;
+	public event;
+	public constructor(line: Number, component: String, event:String) {
+		this.line = line;
+		this.component = component;
+		this.event=event;
+	}
+}

@@ -4,7 +4,7 @@
         {
             "type": "extensionHost",
             "request": "launch",
-            "name": "Launch Extension",
+            "name": "Extension",
             "runtimeExecutable": "${execPath}",
             "args": [
                 "--extensionDevelopmentPath=${workspaceRoot}"
@@ -12,6 +12,27 @@
             "sourceMaps": true,
             "outFiles": [
                 "${workspaceRoot}/out/**/*.js"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debugger",
+            "program":"${workspaceRoot}/clockwork/out/debugger.js",
+            "args": [
+                "--server=4711"
+            ],
+            "stopOnEntry": false,
+            "sourceMaps": true,
+            "cwd": "${workspaceRoot}"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Extension/Debugger",
+            "configurations": [
+                "Extension",
+                "Debugger"
             ]
         }
     ]
