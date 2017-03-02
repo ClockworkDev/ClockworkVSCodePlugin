@@ -39,8 +39,9 @@ class ClockworkDebugSession extends DebugSession {
 
 	private io = require('socket.io')();
 
+	private parsedBreakpoints: Array<ClockworkBreakPoint>;
 
-
+	private bpVariables;
 
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
 	private static THREAD_ID = 1;
@@ -72,6 +73,28 @@ class ClockworkDebugSession extends DebugSession {
 
 	private serverPort = 3001;
 
+	private socketEmit;
+
+
+	private isBackConnected;
+	private isFrontConnected;
+	private backendConnected() {
+		if (!this.isBackConnected) {
+			this.isBackConnected = true;
+			if (this.isBackConnected && this.isFrontConnected) {
+				this.sendEvent(new InitializedEvent());
+			}
+		}
+	}
+
+	private frontendConnected() {
+		if (!this.isFrontConnected) {
+			this.isFrontConnected = true;
+			if (this.isBackConnected && this.isFrontConnected) {
+				this.sendEvent(new InitializedEvent());
+			}
+		}
+	}
 	/**
 	 * Creates a new debug adapter that is used for one debug session.
 	 * We configure the default implementation of a debug adapter here.
@@ -83,11 +106,28 @@ class ClockworkDebugSession extends DebugSession {
 		this.setDebuggerLinesStartAt1(false);
 		this.setDebuggerColumnsStartAt1(false);
 
+		this.isBackConnected = false;
+		this.isFrontConnected = false;
+
+		this.bpVariables = [];
+
 		var session = this;
-		this.io.on('connection', function (client) {
-			console.log("Connection established");
+		this.io.on('connection', function (socket) {
+			session.socketEmit = function (x, y) {
+				return socket.emit(x, y);
+			}
+			socket.on('breakpointHit', function (data) {
+				console.log("OMG a bp was hit");
+				session.bpVariables = [];
+				for (var id in data.vars) {
+					session.bpVariables.push({ id: id, value: data.vars[id] });
+				}
+				session.sendEvent(new StoppedEvent("breakpoint", ClockworkDebugSession.THREAD_ID));
+			});
+			session.backendConnected();
 		});
 		this.io.listen(this.serverPort);
+		this.parsedBreakpoints = new Array<ClockworkBreakPoint>();
 	}
 
 	/**
@@ -99,8 +139,7 @@ class ClockworkDebugSession extends DebugSession {
 		// since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
 		// we request them early by sending an 'initializeRequest' to the frontend.
 		// The frontend will end the configuration sequence by calling 'configurationDone' request.
-
-		this.sendEvent(new InitializedEvent());
+		this.frontendConnected();
 
 		// This debug adapter implements the configurationDoneRequest.
 		response.body.supportsConfigurationDoneRequest = true;
@@ -120,16 +159,9 @@ class ClockworkDebugSession extends DebugSession {
 		var manifest = readManifest(args.program);
 		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name);
 
-		if (args.stopOnEntry) {
-			this._currentLine = 0;
-			this.sendResponse(response);
 
-			// we stop on the first line
-			this.sendEvent(new StoppedEvent("entry", ClockworkDebugSession.THREAD_ID));
-		} else {
-			// we just start to run until we hit a breakpoint or an exception
-			this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: ClockworkDebugSession.THREAD_ID });
-		}
+		// we just start to run until we hit a breakpoint or an exception
+		this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: ClockworkDebugSession.THREAD_ID });
 	}
 
 	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
@@ -150,22 +182,11 @@ class ClockworkDebugSession extends DebugSession {
 			if (l < lines.length) {
 				const line = lines[l].trim();
 				// if a line is empty or starts with '+' we don't allow to set a breakpoint but move the breakpoint down
-				var {component, event, eventLine} = parser.getComponentEvent(l);
-				console.log(eventLine);
+				var { component, event, eventLine } = parser.getComponentEvent(l);
 				l = eventLine;
-				console.log(component, event);
-				if (line.length == 0 || line.indexOf("+") == 0)
-					l++;
-				// if a line starts with '-' we don't allow to set a breakpoint but move the breakpoint up
-				if (line.indexOf("-") == 0)
-					l--;
-				// don't set 'verified' to true if the line contains the word 'lazy'
-				// in this case the breakpoint will be verified 'lazy' after hitting it once.
-				if (line.indexOf("lazy") < 0) {
-					verified = true;    // this breakpoint has been validated
-				}
+				this.parsedBreakpoints.push(new ClockworkBreakPoint(eventLine, component, event));
 			}
-			const bp = <DebugProtocol.Breakpoint>new Breakpoint(verified, this.convertDebuggerLineToClient(l));
+			const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
 			bp.id = this._breakpointId++;
 			breakpoints.push(bp);
 		}
@@ -176,6 +197,8 @@ class ClockworkDebugSession extends DebugSession {
 			breakpoints: breakpoints
 		};
 		this.sendResponse(response);
+
+		this.socketEmit('setBreakpoints', this.parsedBreakpoints);
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
@@ -230,33 +253,16 @@ class ClockworkDebugSession extends DebugSession {
 	}
 
 	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-
-		const variables = [];
+		var variables;
 		const id = this._variableHandles.get(args.variablesReference);
-		if (id != null) {
-			variables.push({
-				name: id + "_i",
-				type: "integer",
-				value: "123",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_f",
-				type: "float",
-				value: "3.14",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_s",
-				type: "string",
-				value: "hello world",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_o",
-				type: "object",
-				value: "Object",
-				variablesReference: this._variableHandles.create("object_")
+		if (id == "local_0") {
+			variables = this.bpVariables.map(function (v,i) {
+				return {
+					name: v.id,
+					type: typeof v.value,
+					value: v.value.toString(),
+					variablesReference: 0
+				};
 			});
 		}
 
@@ -268,14 +274,14 @@ class ClockworkDebugSession extends DebugSession {
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 
-		for (var ln = this._currentLine + 1; ln < this._sourceLines.length; ln++) {
-			if (this.fireEventsForLine(response, ln)) {
-				return;
-			}
-		}
-		this.sendResponse(response);
-		// no more lines: run to end
-		this.sendEvent(new TerminatedEvent());
+		// for (var ln = this._currentLine + 1; ln < this._sourceLines.length; ln++) {
+		// 	if (this.fireEventsForLine(response, ln)) {
+		// 		return;
+		// 	}
+		// }
+		// this.sendResponse(response);
+		// // no more lines: run to end
+		// this.sendEvent(new TerminatedEvent());
 	}
 
 	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
@@ -549,9 +555,9 @@ class ClockworkBreakPoint {
 	public line;
 	public component;
 	public event;
-	public constructor(line: Number, component: String, event:String) {
+	public constructor(line: Number, component: String, event: String) {
 		this.line = line;
 		this.component = component;
-		this.event=event;
+		this.event = event;
 	}
 }
