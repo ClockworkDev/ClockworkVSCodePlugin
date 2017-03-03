@@ -41,7 +41,9 @@ class ClockworkDebugSession extends DebugSession {
 
 	private parsedBreakpoints: Array<ClockworkBreakPoint>;
 
-	private bpVariables;
+	private objectVariables;
+	private engineVariables;
+	private eventStack;
 
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
 	private static THREAD_ID = 1;
@@ -57,6 +59,7 @@ class ClockworkDebugSession extends DebugSession {
 	}
 	private set _currentLine(line: number) {
 		this.__currentLine = line;
+		console.log("line",line);
 		this.log('line', line);
 	}
 
@@ -109,7 +112,9 @@ class ClockworkDebugSession extends DebugSession {
 		this.isBackConnected = false;
 		this.isFrontConnected = false;
 
-		this.bpVariables = [];
+		this.objectVariables = [];
+		this.engineVariables = [];
+		this.eventStack = [];
 
 		var session = this;
 		this.io.on('connection', function (socket) {
@@ -117,12 +122,19 @@ class ClockworkDebugSession extends DebugSession {
 				return socket.emit(x, y);
 			}
 			socket.on('breakpointHit', function (data) {
-				console.log("OMG a bp was hit");
-				session.bpVariables = [];
+				console.log("OMG a bp was hit", data.bp.line,data.bp.path);
+				session._sourceFile = data.bp.path;
+				session._currentLine = data.bp.line;
+				session.objectVariables = [];
+				session.engineVariables = [];
+				session.eventStack=data.stack;
 				for (var id in data.vars) {
-					session.bpVariables.push({ id: id, value: data.vars[id] });
+					session.objectVariables.push({ id: id, value: data.vars[id] });
 				}
-				session.sendEvent(new StoppedEvent("breakpoint", ClockworkDebugSession.THREAD_ID));
+				for (var id in data.engineVars) {
+					session.engineVariables.push({ id: id, value: data.engineVars[id] });
+				}
+				session.sendEvent(new StoppedEvent("step", ClockworkDebugSession.THREAD_ID));
 			});
 			session.backendConnected();
 		});
@@ -184,7 +196,7 @@ class ClockworkDebugSession extends DebugSession {
 				// if a line is empty or starts with '+' we don't allow to set a breakpoint but move the breakpoint down
 				var { component, event, eventLine } = parser.getComponentEvent(l);
 				l = eventLine;
-				this.parsedBreakpoints.push(new ClockworkBreakPoint(eventLine, component, event));
+				this.parsedBreakpoints.push(new ClockworkBreakPoint(eventLine, component, event, path));
 			}
 			const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
 			bp.id = this._breakpointId++;
@@ -206,7 +218,7 @@ class ClockworkDebugSession extends DebugSession {
 		// return the default thread
 		response.body = {
 			threads: [
-				new Thread(ClockworkDebugSession.THREAD_ID, "thread 1")
+				new Thread(ClockworkDebugSession.THREAD_ID, "Clockwork Engine Thread")
 			]
 		};
 		this.sendResponse(response);
@@ -216,24 +228,25 @@ class ClockworkDebugSession extends DebugSession {
 	 * Returns a fake 'stacktrace' where every 'stackframe' is a word from the current line.
 	 */
 	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
+		// const words = this._sourceLines[this._currentLine].trim().split(/\s+/);
 
-		const words = this._sourceLines[this._currentLine].trim().split(/\s+/);
-
-		const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
-		const maxLevels = typeof args.levels === 'number' ? args.levels : words.length - startFrame;
-		const endFrame = Math.min(startFrame + maxLevels, words.length);
-
-		const frames = new Array<StackFrame>();
-		// every word of the current line becomes a stack frame.
-		for (let i = startFrame; i < endFrame; i++) {
-			const name = words[i];	// use a word of the line as the stackframe name
-			frames.push(new StackFrame(i, `${name}(${i})`, new Source(basename(this._sourceFile),
-				this.convertDebuggerPathToClient(this._sourceFile)),
-				this.convertDebuggerLineToClient(this._currentLine), 0));
-		}
+		// const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
+		// const maxLevels = typeof args.levels === 'number' ? args.levels : words.length - startFrame;
+		// const endFrame = Math.min(startFrame + maxLevels, words.length);
+		var session=this;
+		const frames = this.eventStack.map(function(event,i){
+			return new StackFrame(i, `${event.event} in ${event.component}`, new Source(session._sourceFile), session.convertDebuggerLineToClient(session._currentLine),0);
+		});
+		// // every word of the current line becomes a stack frame.
+		// for (let i = startFrame; i < endFrame; i++) {
+		// 	const name = words[i];	// use a word of the line as the stackframe name
+		// 	frames.push(new StackFrame(i, `${name}(${i})`, new Source(basename(this._sourceFile),
+		// 		this.convertDebuggerPathToClient(this._sourceFile)),
+		// 		this.convertDebuggerLineToClient(this._currentLine), 0));
+		// }
 		response.body = {
 			stackFrames: frames,
-			totalFrames: words.length
+			totalFrames: 0
 		};
 		this.sendResponse(response);
 	}
@@ -242,9 +255,8 @@ class ClockworkDebugSession extends DebugSession {
 
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
-		scopes.push(new Scope("Local", this._variableHandles.create("local_" + frameReference), false));
-		scopes.push(new Scope("Closure", this._variableHandles.create("closure_" + frameReference), false));
-		scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
+		scopes.push(new Scope("Object variables", this._variableHandles.create("object" ), false));
+		scopes.push(new Scope("Engine variables", this._variableHandles.create("engine"), true));
 
 		response.body = {
 			scopes: scopes
@@ -255,12 +267,23 @@ class ClockworkDebugSession extends DebugSession {
 	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
 		var variables;
 		const id = this._variableHandles.get(args.variablesReference);
-		if (id == "local_0") {
-			variables = this.bpVariables.map(function (v,i) {
+		if (id == "object") {
+			variables = this.objectVariables.map(function (v, i) {
 				return {
 					name: v.id,
 					type: typeof v.value,
-					value: v.value.toString(),
+					value: JSON.stringify(v.value),
+					variablesReference: 0
+				};
+			});
+		}
+		if (id == "engine") {
+			variables = this.engineVariables.map(function (v, i) {
+				console.log(v.id,v.value);
+				return {
+					name: v.id,
+					type: typeof v.value,
+					value: JSON.stringify(v.value),
 					variablesReference: 0
 				};
 			});
@@ -279,7 +302,7 @@ class ClockworkDebugSession extends DebugSession {
 		// 		return;
 		// 	}
 		// }
-		// this.sendResponse(response);
+		this.sendResponse(response);
 		// // no more lines: run to end
 		// this.sendEvent(new TerminatedEvent());
 	}
@@ -555,9 +578,11 @@ class ClockworkBreakPoint {
 	public line;
 	public component;
 	public event;
-	public constructor(line: Number, component: String, event: String) {
+	public path;
+	public constructor(line: Number, component: String, event: String, path:String) {
 		this.line = line;
 		this.component = component;
 		this.event = event;
+		this.path=path;
 	}
 }
