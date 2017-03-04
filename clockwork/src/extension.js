@@ -2,6 +2,35 @@
 // Import the module and reference it with the alias vscode in your code below
 var vscode = require('vscode');
 var exec = require('child_process').exec;
+var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/", function (data, callback) {
+    var requiredData = [];
+    for (var field in data.properties) {
+        var currentProp = data.properties[field];
+        requiredData.push({
+            id: field,
+            description: currentProp.description,
+            pattern: currentProp.pattern
+        });
+    }
+    function askInformation(requiredInformation, answer) {
+        if (requiredInformation.length == 0) {
+            return callback(undefined, answer);
+        }
+        var nextQuestion = requiredInformation[0];
+        vscode.window.showInputBox({ prompt: nextQuestion.description }).then(function (value) {
+            if (nextQuestion.pattern && !nextQuestion.pattern.test(value)) {
+                vscode.window.showErrorMessage("The value is invalid, please try again.")
+                askInformation(requiredInformation, answer);
+            } else {
+                answer[nextQuestion.id] = value;
+                requiredInformation.shift();
+                askInformation(requiredInformation, answer);
+            }
+        });
+    }
+    return askInformation(requiredData, {});
+});
+
 
 
 const initialConfigurations = {
@@ -32,25 +61,20 @@ function activate(context) {
     var disposable = vscode.commands.registerCommand('extension.createProject', function () {
         var thisExtension = vscode.extensions.getExtension('arcadio.clockwork');
         vscode.window.showInputBox({ prompt: "What is the name of your proyect?" }).then(function (name) {
-            exec(thisExtension.extensionPath + "/node_modules/.bin/clockwork init " + name, { cwd: vscode.workspace.rootPath }, function (error, stdout, stderr) {
-                if (!error) {
-                    vscode.window.showInformationMessage(`Project ${name} created successfully`);
-                }
-            });
+            clockworkTools.createProject(name);
+            vscode.window.showInformationMessage(`Project ${name} created successfully`);
         })
     });
     context.subscriptions.push(disposable);
 
     function buildProject(callback) {
         var thisExtension = vscode.extensions.getExtension('arcadio.clockwork');
-        exec(thisExtension.extensionPath + "/node_modules/.bin/clockwork build ", { cwd: vscode.workspace.rootPath }, callback);
+        clockworkTools.buildProject(callback);
     }
 
     disposable = vscode.commands.registerCommand('extension.buildProject', function () {
-        buildProject(function (error, stdout, stderr) {
-            if (!error) {
-                vscode.window.showInformationMessage(`Project built successfully`);
-            }
+        buildProject(function (name) {
+            vscode.window.showInformationMessage(`Project built successfully at ${name}`);
         });
     });
     context.subscriptions.push(disposable);
@@ -58,15 +82,13 @@ function activate(context) {
     disposable = vscode.commands.registerCommand('extension.deployPackage', function () {
         var manifest = readManifest();
         if (manifest != null) {
-            buildProject(function (error, stdout, stderr) {
-                if (!error) {
-                    if (!deployServer) {
-                        deployServer = Server();
-                    }
-                    deployServer.setDeployPackage(vscode.workspace.rootPath + "/" + manifest.name + ".cw");
-                    const opn = require('opn');
-                    opn("cwrt://localhost:" + serverPort + "/deployPackage");
+            buildProject(function (name) {
+                if (!deployServer) {
+                    deployServer = Server();
                 }
+                deployServer.setDeployPackage(vscode.workspace.rootPath + "/" + manifest.name + ".cw");
+                const opn = require('opn');
+                opn("cwrt://localhost:" + serverPort + "/deployPackage");
             });
         }
     });
@@ -101,13 +123,13 @@ function activate(context) {
 
     //Debugger
 
-	context.subscriptions.push(vscode.commands.registerCommand('extension.provideInitialConfigurations', () => {
-		return [
-			'// Use IntelliSense to learn about possible Clockwork debug attributes.',
-			'// Hover to view descriptions of existing attributes.',
-			JSON.stringify(initialConfigurations, null, '\t')
-		].join('\n');
-	}));
+    context.subscriptions.push(vscode.commands.registerCommand('extension.provideInitialConfigurations', () => {
+        return [
+            '// Use IntelliSense to learn about possible Clockwork debug attributes.',
+            '// Hover to view descriptions of existing attributes.',
+            JSON.stringify(initialConfigurations, null, '\t')
+        ].join('\n');
+    }));
 
 
 }
