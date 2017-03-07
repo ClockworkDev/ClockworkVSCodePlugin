@@ -3,7 +3,7 @@
  *--------------------------------------------------------*/
 import {
 	DebugSession,
-	InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Event,
+	InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Event, ContinuedEvent,
 	Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
@@ -59,7 +59,7 @@ class ClockworkDebugSession extends DebugSession {
 	}
 	private set _currentLine(line: number) {
 		this.__currentLine = line;
-		console.log("line",line);
+		console.log("line", line);
 		this.log('line', line);
 	}
 
@@ -115,19 +115,24 @@ class ClockworkDebugSession extends DebugSession {
 		this.objectVariables = [];
 		this.engineVariables = [];
 		this.eventStack = [];
+		
+		var awaitingEvents=[];
+		this.socketEmit=function(x,y){
+			awaitingEvents.push({x:x,y:y})
+		};
 
 		var session = this;
 		this.io.on('connection', function (socket) {
+			awaitingEvents.forEach((x,y)=>socket.emit(x,y));
 			session.socketEmit = function (x, y) {
 				return socket.emit(x, y);
 			}
 			socket.on('breakpointHit', function (data) {
-				console.log("OMG a bp was hit", data.bp.line,data.bp.path);
 				session._sourceFile = data.bp.path;
 				session._currentLine = data.bp.line;
 				session.objectVariables = [];
 				session.engineVariables = [];
-				session.eventStack=data.stack;
+				session.eventStack = data.stack;
 				for (var id in data.vars) {
 					session.objectVariables.push({ id: id, value: data.vars[id] });
 				}
@@ -135,6 +140,9 @@ class ClockworkDebugSession extends DebugSession {
 					session.engineVariables.push({ id: id, value: data.engineVars[id] });
 				}
 				session.sendEvent(new StoppedEvent("step", ClockworkDebugSession.THREAD_ID));
+			});
+			socket.on('continue', function (data) {
+				session.sendEvent(new ContinuedEvent(ClockworkDebugSession.THREAD_ID));
 			});
 			session.backendConnected();
 		});
@@ -233,9 +241,9 @@ class ClockworkDebugSession extends DebugSession {
 		// const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
 		// const maxLevels = typeof args.levels === 'number' ? args.levels : words.length - startFrame;
 		// const endFrame = Math.min(startFrame + maxLevels, words.length);
-		var session=this;
-		const frames = this.eventStack.map(function(event,i){
-			return new StackFrame(i, `${event.event} in ${event.component}`, new Source(session._sourceFile), session.convertDebuggerLineToClient(session._currentLine),0);
+		var session = this;
+		const frames = this.eventStack.map(function (event, i) {
+			return new StackFrame(i, `${event.event} in ${event.component}`, new Source(session._sourceFile), session.convertDebuggerLineToClient(session._currentLine), 0);
 		});
 		// // every word of the current line becomes a stack frame.
 		// for (let i = startFrame; i < endFrame; i++) {
@@ -255,7 +263,7 @@ class ClockworkDebugSession extends DebugSession {
 
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
-		scopes.push(new Scope("Object variables", this._variableHandles.create("object" ), false));
+		scopes.push(new Scope("Object variables", this._variableHandles.create("object"), false));
 		scopes.push(new Scope("Engine variables", this._variableHandles.create("engine"), true));
 
 		response.body = {
@@ -279,7 +287,7 @@ class ClockworkDebugSession extends DebugSession {
 		}
 		if (id == "engine") {
 			variables = this.engineVariables.map(function (v, i) {
-				console.log(v.id,v.value);
+				console.log(v.id, v.value);
 				return {
 					name: v.id,
 					type: typeof v.value,
@@ -296,15 +304,9 @@ class ClockworkDebugSession extends DebugSession {
 	}
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
+		this.socketEmit('continueRequest', '');
 
-		// for (var ln = this._currentLine + 1; ln < this._sourceLines.length; ln++) {
-		// 	if (this.fireEventsForLine(response, ln)) {
-		// 		return;
-		// 	}
-		// }
 		this.sendResponse(response);
-		// // no more lines: run to end
-		// this.sendEvent(new TerminatedEvent());
 	}
 
 	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
@@ -579,10 +581,10 @@ class ClockworkBreakPoint {
 	public component;
 	public event;
 	public path;
-	public constructor(line: Number, component: String, event: String, path:String) {
+	public constructor(line: Number, component: String, event: String, path: String) {
 		this.line = line;
 		this.component = component;
 		this.event = event;
-		this.path=path;
+		this.path = path;
 	}
 }
