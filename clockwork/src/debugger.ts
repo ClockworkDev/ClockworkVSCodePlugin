@@ -59,7 +59,6 @@ class ClockworkDebugSession extends DebugSession {
 	}
 	private set _currentLine(line: number) {
 		this.__currentLine = line;
-		console.log("line", line);
 		this.log('line', line);
 	}
 
@@ -115,15 +114,15 @@ class ClockworkDebugSession extends DebugSession {
 		this.objectVariables = [];
 		this.engineVariables = [];
 		this.eventStack = [];
-		
-		var awaitingEvents=[];
-		this.socketEmit=function(x,y){
-			awaitingEvents.push({x:x,y:y})
+
+		var awaitingEvents = [];
+		this.socketEmit = function (x, y) {
+			awaitingEvents.push({ x: x, y: y })
 		};
 
 		var session = this;
 		this.io.on('connection', function (socket) {
-			awaitingEvents.forEach((x,y)=>socket.emit(x,y));
+			awaitingEvents.forEach((x, y) => socket.emit(x, y));
 			session.socketEmit = function (x, y) {
 				return socket.emit(x, y);
 			}
@@ -165,10 +164,10 @@ class ClockworkDebugSession extends DebugSession {
 		response.body.supportsConfigurationDoneRequest = true;
 
 		// make VS Code to use 'evaluate' when hovering over source
-		response.body.supportsEvaluateForHovers = true;
+		response.body.supportsEvaluateForHovers = false;
 
 		// make VS Code to show a 'step back' button
-		response.body.supportsStepBack = true;
+		response.body.supportsStepBack = false;
 
 		this.sendResponse(response);
 	}
@@ -176,9 +175,9 @@ class ClockworkDebugSession extends DebugSession {
 	protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
 		this._sourceFile = args.program;
 		this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
+		//Launch the app in the runtime
 		var manifest = readManifest(args.program);
 		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name);
-
 
 		// we just start to run until we hit a breakpoint or an exception
 		this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: ClockworkDebugSession.THREAD_ID });
@@ -201,7 +200,6 @@ class ClockworkDebugSession extends DebugSession {
 			var verified = false;
 			if (l < lines.length) {
 				const line = lines[l].trim();
-				// if a line is empty or starts with '+' we don't allow to set a breakpoint but move the breakpoint down
 				var { component, event, eventLine } = parser.getComponentEvent(l);
 				l = eventLine;
 				this.parsedBreakpoints.push(new ClockworkBreakPoint(eventLine, component, event, path));
@@ -222,7 +220,6 @@ class ClockworkDebugSession extends DebugSession {
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-
 		// return the default thread
 		response.body = {
 			threads: [
@@ -232,26 +229,11 @@ class ClockworkDebugSession extends DebugSession {
 		this.sendResponse(response);
 	}
 
-	/**
-	 * Returns a fake 'stacktrace' where every 'stackframe' is a word from the current line.
-	 */
 	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
-		// const words = this._sourceLines[this._currentLine].trim().split(/\s+/);
-
-		// const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
-		// const maxLevels = typeof args.levels === 'number' ? args.levels : words.length - startFrame;
-		// const endFrame = Math.min(startFrame + maxLevels, words.length);
 		var session = this;
 		const frames = this.eventStack.map(function (event, i) {
 			return new StackFrame(i, `${event.event} in ${event.component}`, new Source(session._sourceFile), session.convertDebuggerLineToClient(session._currentLine), 0);
 		});
-		// // every word of the current line becomes a stack frame.
-		// for (let i = startFrame; i < endFrame; i++) {
-		// 	const name = words[i];	// use a word of the line as the stackframe name
-		// 	frames.push(new StackFrame(i, `${name}(${i})`, new Source(basename(this._sourceFile),
-		// 		this.convertDebuggerPathToClient(this._sourceFile)),
-		// 		this.convertDebuggerLineToClient(this._currentLine), 0));
-		// }
 		response.body = {
 			stackFrames: frames,
 			totalFrames: 0
@@ -287,7 +269,6 @@ class ClockworkDebugSession extends DebugSession {
 		}
 		if (id == "engine") {
 			variables = this.engineVariables.map(function (v, i) {
-				console.log(v.id, v.value);
 				return {
 					name: v.id,
 					type: typeof v.value,
@@ -309,42 +290,18 @@ class ClockworkDebugSession extends DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments): void {
-
-		for (var ln = this._currentLine - 1; ln >= 0; ln--) {
-			if (this.fireEventsForLine(response, ln)) {
-				return;
-			}
-		}
-		this.sendResponse(response);
-		// no more lines: stop at first line
-		this._currentLine = 0;
-		this.sendEvent(new StoppedEvent("entry", ClockworkDebugSession.THREAD_ID));
-	}
-
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-
-		for (let ln = this._currentLine + 1; ln < this._sourceLines.length; ln++) {
-			if (this.fireStepEvent(response, ln)) {
-				return;
-			}
-		}
+		this.socketEmit('stepOverRequest', '');
 		this.sendResponse(response);
-		// no more lines: run to end
-		this.sendEvent(new TerminatedEvent());
 	}
 
-	protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments): void {
-
-		for (let ln = this._currentLine - 1; ln >= 0; ln--) {
-			if (this.fireStepEvent(response, ln)) {
-				return;
-			}
-		}
+	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+		this.socketEmit('stepInRequest', '');
 		this.sendResponse(response);
-		// no more lines: stop at first line
-		this._currentLine = 0;
-		this.sendEvent(new StoppedEvent("entry", ClockworkDebugSession.THREAD_ID));
+	}
+	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+		this.socketEmit('stepOutRequest', '');
+		this.sendResponse(response);
 	}
 
 	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
@@ -357,60 +314,6 @@ class ClockworkDebugSession extends DebugSession {
 	}
 
 	//---- some helpers
-
-	/**
-	 * Fire StoppedEvent if line is not empty.
-	 */
-	private fireStepEvent(response: DebugProtocol.Response, ln: number): boolean {
-
-		if (this._sourceLines[ln].trim().length > 0) {	// non-empty line
-			this._currentLine = ln;
-			this.sendResponse(response);
-			this.sendEvent(new StoppedEvent("step", ClockworkDebugSession.THREAD_ID));
-			return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Fire StoppedEvent if line has a breakpoint or the word 'exception' is found.
-	 */
-	private fireEventsForLine(response: DebugProtocol.Response, ln: number): boolean {
-
-		// find the breakpoints for the current source file
-		const breakpoints = this._breakPoints.get(this._sourceFile);
-		if (breakpoints) {
-			const bps = breakpoints.filter(bp => bp.line === this.convertDebuggerLineToClient(ln));
-			if (bps.length > 0) {
-				this._currentLine = ln;
-
-				// 'continue' request finished
-				this.sendResponse(response);
-
-				// send 'stopped' event
-				this.sendEvent(new StoppedEvent("breakpoint", ClockworkDebugSession.THREAD_ID));
-
-				// the following shows the use of 'breakpoint' events to update properties of a breakpoint in the UI
-				// if breakpoint is not yet verified, verify it now and send a 'breakpoint' update event
-				if (!bps[0].verified) {
-					bps[0].verified = true;
-					this.sendEvent(new BreakpointEvent("update", bps[0]));
-				}
-				return true;
-			}
-		}
-
-		// if word 'exception' found in source -> throw exception
-		if (this._sourceLines[ln].indexOf("exception") >= 0) {
-			this._currentLine = ln;
-			this.sendResponse(response);
-			this.sendEvent(new StoppedEvent("exception", ClockworkDebugSession.THREAD_ID));
-			this.log('exception in line', ln);
-			return true;
-		}
-
-		return false;
-	}
 
 	private log(msg: string, line: number) {
 		const e = new OutputEvent(`${msg}: ${line}\n`);
