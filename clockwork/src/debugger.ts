@@ -81,6 +81,8 @@ class ClockworkDebugSession extends DebugSession {
 
 	private socketEmit;
 
+	private evalId: number;
+	private pendingEval;
 
 	private isBackConnected;
 	private isFrontConnected;
@@ -124,6 +126,9 @@ class ClockworkDebugSession extends DebugSession {
 			awaitingEvents.push({ x: x, y: y })
 		};
 
+		this.pendingEval = [];
+		this.evalId = 0;
+
 		var session = this;
 		this.io.on('connection', function (socket) {
 			awaitingEvents.forEach((x, y) => socket.emit(x, y));
@@ -148,8 +153,15 @@ class ClockworkDebugSession extends DebugSession {
 				session.sendEvent(new ContinuedEvent(ClockworkDebugSession.THREAD_ID));
 			});
 			socket.on('exception', function (data) {
+				const e = new OutputEvent(`ERROR: ${data.msg} \n`);
+				session.sendEvent(e);
+			});
+			socket.on('log', function (data) {
 				const e = new OutputEvent(`${data.msg} \n`);
 				session.sendEvent(e);
+			});
+			socket.on('evalResult',function(data){
+				session.pendingEval[data.id](data.result);
 			});
 			session.backendConnected();
 		});
@@ -212,19 +224,15 @@ class ClockworkDebugSession extends DebugSession {
 		// verify breakpoint locations
 		for (var i = 0; i < clientLines.length; i++) {
 			var l = this.convertClientLineToDebugger(clientLines[i]);
-			var verified = false;
-			if (l < lines.length) {
-				const line = lines[l].trim();
-				var cbp = parser.getComponentEvent(l);
-				if (cbp) {
-					l=cbp.line;
-					this.parsedBreakpoints.push(cbp);
-					const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
-					bp.id = this._breakpointId++;
-					breakpoints.push(bp);
-				}
+			const line = lines[l].trim();
+			var cbp = parser.getComponentEvent(l);
+			if (cbp) {
+				l = cbp.line;
+				this.parsedBreakpoints.push(cbp);
+				const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
+				bp.id = this._breakpointId++;
+				breakpoints.push(bp);
 			}
-
 		}
 		this._breakPoints.set(path, breakpoints);
 
@@ -322,13 +330,18 @@ class ClockworkDebugSession extends DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
 
-		response.body = {
-			result: `evaluate(context: '${args.context}', '${args.expression}')`,
-			variablesReference: 0
-		};
-		this.sendResponse(response);
+	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
+		var session=this;
+		this.socketEmit('eval', { expression: args.expression, id: this.evalId });
+		this.pendingEval[this.evalId] = function (result) {
+			response.body = {
+				result: result,
+				variablesReference: 0
+			};
+			session.sendResponse(response);
+		}
+		this.evalId++;
 	}
 
 	//---- some helpers
@@ -356,7 +369,7 @@ class ClockworkParser {
 		this.path = path;
 		this.ast = acorn.parse(content, { locations: true });
 		that.ast.body.forEach(function (expression) {
-			if (expression.type == "ExpressionStatement" && expression.expression.callee.property.name == "push" && expression.expression.callee.object.property.name == "components" && expression.expression.callee.object.object.name == "CLOCKWORKRT") {
+			if (expression.type == "ExpressionStatement" && expression.expression.callee.property.name == "register" && expression.expression.callee.object.property.name == "components" && expression.expression.callee.object.object.name == "CLOCKWORKRT") {
 				if (expression.expression.arguments[0].type == "ArrayExpression") {
 					expression.expression.arguments[0].elements.forEach(function (component) {
 						var currentComponentName = "";
