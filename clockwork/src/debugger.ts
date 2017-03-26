@@ -9,6 +9,7 @@ import {
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { readFileSync } from 'fs';
 import { basename } from 'path';
+const acorn = require('acorn');
 
 
 function readManifest(path) {
@@ -40,6 +41,8 @@ class ClockworkDebugSession extends DebugSession {
 	private io = require('socket.io')();
 
 	private parsedBreakpoints: Array<ClockworkBreakPoint>;
+	private eventStepPoints: Array<ClockworkBreakPoint>;
+
 
 	private objectVariables;
 	private engineVariables;
@@ -70,6 +73,7 @@ class ClockworkDebugSession extends DebugSession {
 
 	// maps from sourceFile to array of Breakpoints
 	private _breakPoints = new Map<string, DebugProtocol.Breakpoint[]>();
+
 
 	private _variableHandles = new Handles<string>();
 
@@ -143,6 +147,10 @@ class ClockworkDebugSession extends DebugSession {
 			socket.on('continue', function (data) {
 				session.sendEvent(new ContinuedEvent(ClockworkDebugSession.THREAD_ID));
 			});
+			socket.on('exception', function (data) {
+				const e = new OutputEvent(`${data.msg} \n`);
+				session.sendEvent(e);
+			});
 			session.backendConnected();
 		});
 		this.io.listen(this.serverPort);
@@ -175,8 +183,15 @@ class ClockworkDebugSession extends DebugSession {
 	protected launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments): void {
 		this._sourceFile = args.program;
 		this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
-		//Launch the app in the runtime
 		var manifest = readManifest(args.program);
+		//Find all possible breakpoints
+
+		this.eventStepPoints = manifest.components.map(function (x) {
+			var path = args.program.replace("manifest.json", manifest.scope + "/" + x);
+			var parser = new ClockworkParser(readFileSync(path).toString(), path);
+			return parser.getPossibleBreakpointsFromFile();
+		}).reduce(function (x, y) { return x.concat(y); });
+		//Launch the app in the runtime
 		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name);
 
 		// we just start to run until we hit a breakpoint or an exception
@@ -192,7 +207,7 @@ class ClockworkDebugSession extends DebugSession {
 
 		var breakpoints = new Array<Breakpoint>();
 
-		var parser = new ClockworkParser(lines);
+		var parser = new ClockworkParser(readFileSync(path).toString(), path);
 
 		// verify breakpoint locations
 		for (var i = 0; i < clientLines.length; i++) {
@@ -200,13 +215,16 @@ class ClockworkDebugSession extends DebugSession {
 			var verified = false;
 			if (l < lines.length) {
 				const line = lines[l].trim();
-				var { component, event, eventLine } = parser.getComponentEvent(l);
-				l = eventLine;
-				this.parsedBreakpoints.push(new ClockworkBreakPoint(eventLine, component, event, path));
+				var cbp = parser.getComponentEvent(l);
+				if (cbp) {
+					l=cbp.line;
+					this.parsedBreakpoints.push(cbp);
+					const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
+					bp.id = this._breakpointId++;
+					breakpoints.push(bp);
+				}
 			}
-			const bp = <DebugProtocol.Breakpoint>new Breakpoint(true, this.convertDebuggerLineToClient(l));
-			bp.id = this._breakpointId++;
-			breakpoints.push(bp);
+
 		}
 		this._breakPoints.set(path, breakpoints);
 
@@ -326,137 +344,62 @@ DebugSession.run(ClockworkDebugSession);
 
 class ClockworkParser {
 	private lines: String[];
-	public constructor(lines) {
-		this.lines = lines;
+	private path: String;
+	private content: String;
+	private ast;
+	private possibleBreakpoints: Array<ClockworkBreakPoint>;
+
+	public constructor(content, path) {
+		var that = this;
+		this.possibleBreakpoints = new Array<ClockworkBreakPoint>();
+		this.content = content;
+		this.path = path;
+		this.ast = acorn.parse(content, { locations: true });
+		that.ast.body.forEach(function (expression) {
+			if (expression.type == "ExpressionStatement" && expression.expression.callee.property.name == "push" && expression.expression.callee.object.property.name == "components" && expression.expression.callee.object.object.name == "CLOCKWORKRT") {
+				if (expression.expression.arguments[0].type == "ArrayExpression") {
+					expression.expression.arguments[0].elements.forEach(function (component) {
+						var currentComponentName = "";
+						var currentEvents = [];
+						component.properties.forEach(function (componentProperty) {
+							if (componentProperty.key.name == "name") {
+								currentComponentName = componentProperty.value.value;
+							}
+							if (componentProperty.key.name == "events") {
+								componentProperty.value.elements.forEach(function (event) {
+									var currentEventName = "";
+									var currentEventPos = event.loc;
+									event.properties.forEach(function (eventProperty) {
+										if (eventProperty.key.name == "name") {
+											currentEventName = eventProperty.value.value;
+										}
+									});
+									currentEvents.push({ name: currentEventName, pos: currentEventPos });
+								});
+							}
+						});
+						currentEvents.forEach(function (event) {
+							that.possibleBreakpoints.push(new ClockworkBreakPoint(event.pos.start.line, currentComponentName, event.name, path));
+						});
+					});
+				}
+			}
+		});
 	}
-	private getLineLength(n) {
-		return this.lines[n].length;
+	public getPossibleBreakpointsFromFile(): Array<ClockworkBreakPoint> {
+		return this.possibleBreakpoints;
 	}
-	private getCharAt(p: CursorPosition) {
-		return this.lines[p.line][p.character];
-	}
+
 	public getComponentEvent(n: Number) {
-		var p = new CursorPosition(n, this.getLineLength(n));
-		var nextComponentStartsAfter = this.findPreviousInstanceOf(/CLOCKWORKRT.components.push/g, p);
-		do {
-			var componentStart = this.findNextInstanceOf(/{/g, nextComponentStartsAfter);
-			var componentEnd = this.findMatchingPair("{", "}", componentStart);
-			nextComponentStartsAfter = componentEnd;
-		} while (p.line > componentEnd.line);
-		var component;
-		eval("component = " + this.substring(componentStart, componentEnd));
-		var componentName = component.name;
-		var nextEventStartsAfter = this.findJSproperty(componentStart, "events");
-		do {
-			var eventStart = this.findNextInstanceOf(/{/g, nextEventStartsAfter);
-			var eventEnd = this.findMatchingPair("{", "}", eventStart);
-			nextEventStartsAfter = eventEnd;
-		} while (p.line > eventEnd.line);
-		var event;
-		eval("event = " + this.substring(eventStart, eventEnd));
-		var eventName = event.name;
-		var eventNamePosition = this.findJSproperty(eventStart, "name");
-		return { component: componentName, event: eventName, eventLine: eventNamePosition.line };
-	}
-	private findParentEvent(p: CursorPosition): EventInfo {
-		return new EventInfo("", 0);
-	}
-
-	private findPreviousInstanceOf(pattern, p: CursorPosition): CursorPosition {
-		if (p.line < 0) {
-			return null;
-		} else {
-			var result, lastIndex = null;
-			var remainingLine = this.lines[p.line].substring(0, p.character - 1);
-			while ((result = pattern.exec(remainingLine))) {
-				lastIndex = result.index;
-			}
-
-			if (lastIndex != null) {
-				return new CursorPosition(p.line, lastIndex);
-			} else {
-				return this.findPreviousInstanceOf(pattern, new CursorPosition(p.line - 1, this.getLineLength(p.line - 1) - 1));
-			}
-		}
-	}
-	private findNextInstanceOf(pattern, p: CursorPosition): CursorPosition {
-		if (p.line >= this.lines.length) {
-			return null;
-		} else {
-			var result, firstIndex = null;
-			var remainingLine = this.lines[p.line].substring(p.character, this.getLineLength(p.line));
-			while ((result = pattern.exec(remainingLine))) {
-				firstIndex = result.index;
+		var currentBreakpoint = null;
+		for (var i = 0; i < this.possibleBreakpoints.length; i++) {
+			if (this.possibleBreakpoints[i].line > n) {
 				break;
-			}
-
-			if (firstIndex != null) {
-				return new CursorPosition(p.line, firstIndex);
 			} else {
-				return this.findNextInstanceOf(pattern, new CursorPosition(p.line + 1, 0));
+				currentBreakpoint = this.possibleBreakpoints[i];
 			}
 		}
-	}
-	private findMatchingPair(open, close, p: CursorPosition) {
-		if (this.getCharAt(p) != open) {
-			return null; //If this happens, you are not using me correctly dude
-		}
-		var depth = 1;
-		var currentPosition = p.character + 1;
-		for (var i = p.line; i < this.lines.length; i++) {
-			while (currentPosition < this.getLineLength(i)) {
-				var currentPos = new CursorPosition(i, currentPosition);
-				switch (this.getCharAt(currentPos)) {
-					case open:
-						depth++;
-						break;
-					case close:
-						depth--;
-						if (depth == 0) {
-							return currentPos;
-						}
-						break;
-				}
-				currentPosition++;
-			}
-			currentPosition = 0;
-		}
-		return null;//Not found!
-	}
-
-	private findJSproperty(p: CursorPosition, property) {
-		var depth = 0;
-		var currentPosition = p.character + 1;
-		for (var i = p.line; i < this.lines.length; i++) {
-			while (currentPosition < this.getLineLength(i)) {
-				var currentPos = new CursorPosition(i, currentPosition);
-				switch (this.getCharAt(currentPos)) {
-					case "{":
-						depth++;
-						break;
-					case "}":
-						depth--;
-						break;
-					default:
-						var remainingString = this.lines[i].substr(currentPosition);
-						if (remainingString.indexOf(property) == 0 && depth == 0) {
-							return currentPos;
-						}
-						break;
-				}
-				currentPosition++;
-			}
-			currentPosition = 0;
-		}
-		return null;//Not found!
-	}
-
-	private substring(start: CursorPosition, end: CursorPosition): string {
-		var substring = this.lines.filter(function (x, i) {
-			return i > start.line && i < end.line;
-		}).join("\n");
-		substring = this.lines[start.line].substring(start.character) + "\n" + substring + "\n" + this.lines[end.line].substring(0, end.character + 1);
-		return substring
+		return currentBreakpoint;
 	}
 }
 
@@ -477,6 +420,20 @@ class CursorPosition {
 		this.line = line;
 		this.character = character;
 	}
+	public afterThan(x: CursorPosition) {
+		if (x.line == this.line) {
+			return this.character > x.character;
+		} else {
+			return this.line > x.line;
+		}
+	}
+	public beforeThan(x: CursorPosition) {
+		if (x.line == this.line) {
+			return this.character < x.character;
+		} else {
+			return this.line < x.line;
+		}
+	}
 }
 
 class ClockworkBreakPoint {
@@ -491,3 +448,12 @@ class ClockworkBreakPoint {
 		this.path = path;
 	}
 }
+
+var CLOCKWORKRT = {
+	components: {
+		push: function (lx) {
+			CLOCKWORKRT.actualComponents = CLOCKWORKRT.actualComponents.concat(lx);
+		}
+	},
+	actualComponents: []
+};
