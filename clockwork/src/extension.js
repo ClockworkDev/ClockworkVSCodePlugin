@@ -29,6 +29,9 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
         });
     }
     return askInformation(requiredData, {});
+},function(msg){
+    console.log(msg);
+    // vscode.window.showInformationMessage(msg);
 });
 
 
