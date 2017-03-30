@@ -23,13 +23,14 @@ function readManifest(path) {
 
 
 /**
- * This interface should always match the schema found in the mock-debug extension manifest.
+ * This interface should always match the schema found in the debug extension manifest.
  */
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	/** An absolute path to the program to debug. */
 	program: string;
 	/** Automatically stop target after launch. If not specified, target does not stop. */
 	stopOnEntry?: boolean;
+	levelEditorEnabled?: boolean;
 }
 
 
@@ -204,7 +205,7 @@ class ClockworkDebugSession extends DebugSession {
 			return parser.getPossibleBreakpointsFromFile();
 		}).reduce(function (x, y) { return x.concat(y); });
 		//Launch the app in the runtime
-		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name);
+		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name+"&levelEditor="+(args.levelEditorEnabled||true));
 
 		// we just start to run until we hit a breakpoint or an exception
 		this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: ClockworkDebugSession.THREAD_ID });
