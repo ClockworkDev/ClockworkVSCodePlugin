@@ -98,7 +98,11 @@ function activate(context) {
     context.subscriptions.push(disposable);
 
     disposable = vscode.commands.registerCommand('extension.unlockRuntime', function () {
-            exec("powershell.exe",["-command checknetisolation loopbackexempt -a -n=\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\""], function (err, stdout, stderr) {});
+            exec("powershell.exe -command \"checknetisolation loopbackexempt -a -n=\\\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\\\"\"", function (err, stdout, stderr) {
+                console.log(err);
+                console.log(stdout);
+                console.log(stderr);
+            });
     });
     context.subscriptions.push(disposable);
 
