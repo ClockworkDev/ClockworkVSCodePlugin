@@ -29,7 +29,7 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
         });
     }
     return askInformation(requiredData, {});
-},function(msg){
+}, function (msg) {
     console.log(msg);
     // vscode.window.showInformationMessage(msg);
 });
@@ -49,10 +49,27 @@ const initialConfigurations = {
     ]
 }
 
+
+const serverPort = 3000;
+
+var Server = function () {
+    var file = null;
+    var app = require('express')();
+    var server = require('http').Server(app);
+    server.listen(serverPort);
+    app.get('/deployPackage', function (req, res) {
+        res.sendFile(file);
+    });
+    return {
+        setDeployPackage: function (someFile) {
+            file = someFile;
+        }
+    }
+}
+
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 function activate(context) {
-    const serverPort = 3000;
     var deployServer = null;
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -98,12 +115,30 @@ function activate(context) {
     context.subscriptions.push(disposable);
 
     disposable = vscode.commands.registerCommand('extension.unlockRuntime', function () {
-            exec("powershell.exe -command \"checknetisolation loopbackexempt -a -n=\\\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\\\"\"", function (err, stdout, stderr) {
-                console.log(stdout);
-                console.log(stderr);
-            });
+        exec("powershell.exe -command \"checknetisolation loopbackexempt -a -n=\\\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\\\"\"", function (err, stdout, stderr) {
+            console.log(stdout);
+            console.log(stderr);
+        });
     });
     context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.packageDoc', function () {
+        const opn = require('opn');
+        vscode.window.showInputBox({ prompt: "Package name:" }).then(function (name) {
+            var manifest = readManifest();
+            var version = manifest.dependencies[name];
+            if (typeof version !== "undefined") {
+                vscode.commands.executeCommand('vscode.previewHtml', "http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version, 2, name);
+            } else {
+                vscode.window.showInputBox({ prompt: "Package version:" }).then(function (version) {
+                    opn("http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version);
+                });
+            }
+        })
+    });
+    context.subscriptions.push(disposable);
+
+    vscode.workspace.registerTextDocumentContentProvider('clockwork-doc', provider2);
 
 
 
@@ -118,20 +153,6 @@ function activate(context) {
         return manifest;
     }
 
-    var Server = function () {
-        var file = null;
-        var app = require('express')();
-        var server = require('http').Server(app);
-        server.listen(serverPort);
-        app.get('/deployPackage', function (req, res) {
-            res.sendFile(file);
-        });
-        return {
-            setDeployPackage: function (someFile) {
-                file = someFile;
-            }
-        }
-    };
 
     //Debugger
 
