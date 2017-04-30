@@ -131,7 +131,8 @@ function activate(context) {
             var manifest = readManifest();
             var version = manifest.dependencies[name];
             if (typeof version !== "undefined") {
-                vscode.commands.executeCommand('vscode.previewHtml', "http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version, 2, name);
+                    opn("http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version);
+                // vscode.commands.executeCommand('vscode.previewHtml', "http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version, 2, name);
             } else {
                 vscode.window.showInputBox({ prompt: "Package version:" }).then(function (version) {
                     opn("http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version);
