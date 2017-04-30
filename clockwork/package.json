@@ -2,7 +2,7 @@
   "name": "clockwork",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -109,7 +109,6 @@
   },
   "dependencies": {
     "acorn": "^4.0.11",
-    "clockwork-tools": ">=1.7.3",
     "express": "^4.15.2",
     "opn": "^4.0.2",
     "socket.io": "^1.7.3",

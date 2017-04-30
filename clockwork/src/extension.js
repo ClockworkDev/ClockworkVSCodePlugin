@@ -32,7 +32,10 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
 }, function (msg) {
     console.log(msg);
     // vscode.window.showInformationMessage(msg);
-});
+},
+    function (msg) {
+        vscode.window.showErrorMessage(msg);
+    });
 
 
 
