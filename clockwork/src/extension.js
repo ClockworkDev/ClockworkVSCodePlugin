@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 var vscode = require('vscode');
 var exec = require('child_process').exec;
-var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/", function (data, callback) {
+var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/", function(data, callback) {
     var requiredData = [];
     for (var field in data.properties) {
         var currentProp = data.properties[field];
@@ -17,7 +17,7 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
             return callback(undefined, answer);
         }
         var nextQuestion = requiredInformation[0];
-        vscode.window.showInputBox({ prompt: nextQuestion.description }).then(function (value) {
+        vscode.window.showInputBox({ prompt: nextQuestion.description }).then(function(value) {
             if (nextQuestion.pattern && !nextQuestion.pattern.test(value)) {
                 vscode.window.showErrorMessage("The value is invalid, please try again.")
                 askInformation(requiredInformation, answer);
@@ -29,11 +29,11 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
         });
     }
     return askInformation(requiredData, {});
-}, function (msg) {
+}, function(msg) {
     console.log(msg);
     // vscode.window.showInformationMessage(msg);
 },
-    function (msg) {
+    function(msg) {
         vscode.window.showErrorMessage(msg);
     });
 
@@ -55,16 +55,16 @@ const initialConfigurations = {
 
 const serverPort = 3000;
 
-var Server = function () {
+var Server = function() {
     var file = null;
     var app = require('express')();
     var server = require('http').Server(app);
     server.listen(serverPort);
-    app.get('/deployPackage', function (req, res) {
+    app.get('/deployPackage', function(req, res) {
         res.sendFile(file);
     });
     return {
-        setDeployPackage: function (someFile) {
+        setDeployPackage: function(someFile) {
             file = someFile;
         }
     }
@@ -81,9 +81,9 @@ function activate(context) {
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
-    var disposable = vscode.commands.registerCommand('extension.createProject', function () {
+    var disposable = vscode.commands.registerCommand('extension.createProject', function() {
         var thisExtension = vscode.extensions.getExtension('arcadio.clockwork');
-        vscode.window.showInputBox({ prompt: "What is the name of your proyect?" }).then(function (name) {
+        vscode.window.showInputBox({ prompt: "What is the name of your proyect?" }).then(function(name) {
             clockworkTools.createProject(name);
             vscode.window.showInformationMessage(`Project ${name} created successfully`);
         })
@@ -95,17 +95,17 @@ function activate(context) {
         clockworkTools.buildProject(callback);
     }
 
-    disposable = vscode.commands.registerCommand('extension.buildProject', function () {
-        buildProject(function (name) {
+    disposable = vscode.commands.registerCommand('extension.buildProject', function() {
+        buildProject(function(name) {
             vscode.window.showInformationMessage(`Project built successfully at ${name}`);
         });
     });
     context.subscriptions.push(disposable);
 
-    disposable = vscode.commands.registerCommand('extension.deployPackage', function () {
+    disposable = vscode.commands.registerCommand('extension.deployPackage', function() {
         var manifest = readManifest();
         if (manifest != null) {
-            buildProject(function (name) {
+            buildProject(function(name) {
                 if (!deployServer) {
                     deployServer = Server();
                 }
@@ -117,33 +117,82 @@ function activate(context) {
     });
     context.subscriptions.push(disposable);
 
-    disposable = vscode.commands.registerCommand('extension.unlockRuntime', function () {
-        exec("powershell.exe -command \"checknetisolation loopbackexempt -a -n=\\\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\\\"\"", function (err, stdout, stderr) {
+    disposable = vscode.commands.registerCommand('extension.unlockRuntime', function() {
+        exec("powershell.exe -command \"checknetisolation loopbackexempt -a -n=\\\"58996ARCADIOGARCA.ClockworkRuntime_vf445mhh8ay3y\\\"\"", function(err, stdout, stderr) {
             console.log(stdout);
             console.log(stderr);
         });
     });
     context.subscriptions.push(disposable);
 
-    disposable = vscode.commands.registerCommand('extension.packageDoc', function () {
-        const opn = require('opn');
-        vscode.window.showInputBox({ prompt: "Package name:" }).then(function (name) {
+    disposable = vscode.commands.registerCommand('extension.packageDoc', function() {
+        vscode.window.showInputBox({ prompt: "Package name:" }).then(function(name) {
             var manifest = readManifest();
             var version = manifest.dependencies[name];
             if (typeof version !== "undefined") {
-                    opn("http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version);
-                // vscode.commands.executeCommand('vscode.previewHtml', "http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version, 2, name);
+                vscode.commands.executeCommand('vscode.previewHtml', vscode.Uri.parse("clockwork-doc://" + name + "/" + version), vscode.ViewColumn.Two, 'Clockwork Documentation').then((success) => {
+                }, (reason) => {
+                    vscode.window.showErrorMessage(reason);
+                });
             } else {
-                vscode.window.showInputBox({ prompt: "Package version:" }).then(function (version) {
-                    opn("http://cwpm.azurewebsites.net/api/doc/" + name + "/" + version);
+                vscode.window.showInputBox({ prompt: "Package version:" }).then(function(version) {
+                    vscode.commands.executeCommand('vscode.previewHtml', vscode.Uri.parse("clockwork-doc://" + name + "/" + version), vscode.ViewColumn.Two, 'Clockwork Documentation').then((success) => {
+                    }, (reason) => {
+                        vscode.window.showErrorMessage(reason);
+                    });
                 });
             }
         })
     });
     context.subscriptions.push(disposable);
 
-    vscode.workspace.registerTextDocumentContentProvider('clockwork-doc', provider2);
+    disposable = vscode.commands.registerCommand('extension.bridge.web', function() {
+        clockworkTools.runBridge("web", function(success) {
+            if (success) {
+                vscode.window.showInformationMessage(`Web Bridge ran successfully`);
+            } else {
+                vscode.window.showErrorMessage(`Error running the Web Bridge`);
+            }
+        });
+    });
+    context.subscriptions.push(disposable);
 
+    disposable = vscode.commands.registerCommand('extension.bridge.uwp', function() {
+        clockworkTools.runBridge("uwp", function(success) {
+            if (success) {
+                vscode.window.showInformationMessage(`UWP Bridge ran successfully`);
+            } else {
+                vscode.window.showErrorMessage(`Error running the UWP Bridge`);
+            }
+        });
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.workspace.registerTextDocumentContentProvider('clockwork-doc', {
+        provideTextDocumentContent: function(url) {
+            var urlData = /clockwork-doc:\/\/(.+)\/(.+)/.exec(url);
+            var request = require('request');
+            var result = null;
+            var callback = null;
+            request('http://cwpm.azurewebsites.net/api/doc/' + urlData[1] + '/' + urlData[2], function(error, response, body) {
+                if (callback) {
+                    callback(error || body);
+                } else {
+                    result = error || body;
+                }
+            });
+            return {
+                then: function(cb) {
+                    if (result) {
+                        cb(result);
+                    } else {
+                        callback = cb;
+                    }
+                }
+            }
+        }
+    });
+    context.subscriptions.push(disposable);
 
 
     function readManifest(safeMode) {

@@ -2,7 +2,7 @@
   "name": "clockwork",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.1.11",
+  "version": "0.1.14",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -17,7 +17,9 @@
     "onCommand:extension.deployPackage",
     "onCommand:extension.provideInitialConfigurations",
     "onCommand:extension.unlockRuntime",
-    "onCommand:extension.packageDoc"
+    "onCommand:extension.packageDoc",
+    "onCommand:extension.bridge.web",
+    "onCommand:extension.bridge.uwp"
   ],
   "main": "./src/extension.js",
   "contributes": {
@@ -41,6 +43,14 @@
       {
         "command": "extension.packageDoc",
         "title": "Browse Clockwork package documentation"
+      },
+      {
+        "command": "extension.bridge.web",
+        "title": "Export game using the Web Bridge"
+      },
+      {
+        "command": "extension.bridge.uwp",
+        "title": "Export game using the UWP Bridge"
       }
     ],
     "breakpoints": [
@@ -109,8 +119,10 @@
   },
   "dependencies": {
     "acorn": "^4.0.11",
+    "clockwork-tools": "^1.8.4",
     "express": "^4.15.2",
     "opn": "^4.0.2",
+    "request": "^2.81.0",
     "socket.io": "^1.7.3",
     "typescript": "^2.0.10",
     "vscode-debugadapter": "^1.17.0",
