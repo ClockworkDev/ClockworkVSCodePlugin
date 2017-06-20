@@ -15,6 +15,7 @@
     "onCommand:extension.createProject",
     "onCommand:extension.buildProject",
     "onCommand:extension.deployPackage",
+    "onCommand:extension.deployPackageRemote",
     "onCommand:extension.provideInitialConfigurations",
     "onCommand:extension.unlockRuntime",
     "onCommand:extension.packageDoc",
@@ -35,6 +36,10 @@
       {
         "command": "extension.deployPackage",
         "title": "Deploy Clockwork project"
+      },
+            {
+        "command": "extension.deployPackageRemote",
+        "title": "Deploy Clockwork project to remote machine"
       },
       {
         "command": "extension.unlockRuntime",
@@ -120,6 +125,7 @@
   "dependencies": {
     "acorn": "^4.0.11",
     "clockwork-tools": "^1.8.4",
+    "dgram": "^1.0.1",
     "express": "^4.15.2",
     "opn": "^4.0.2",
     "request": "^2.81.0",
