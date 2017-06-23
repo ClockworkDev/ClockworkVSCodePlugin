@@ -31,6 +31,7 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
 	/** Automatically stop target after launch. If not specified, target does not stop. */
 	stopOnEntry?: boolean;
 	levelEditorEnabled?: boolean;
+	remoteMachine?: string;
 }
 
 
@@ -161,7 +162,7 @@ class ClockworkDebugSession extends DebugSession {
 				const e = new OutputEvent(`${data.msg} \n`);
 				session.sendEvent(e);
 			});
-			socket.on('evalResult',function(data){
+			socket.on('evalResult', function (data) {
 				session.pendingEval[data.id](data.result);
 			});
 			session.backendConnected();
@@ -205,7 +206,19 @@ class ClockworkDebugSession extends DebugSession {
 			return parser.getPossibleBreakpointsFromFile();
 		}).reduce(function (x, y) { return x.concat(y); });
 		//Launch the app in the runtime
-		this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name+"&levelEditor="+(args.levelEditorEnabled||true));
+		if (args.remoteMachine) {
+			var dgram = require('dgram');
+			var server = dgram.createSocket("udp4");
+			var serverPort = this.serverPort;
+			server.bind(function () {
+				server.setBroadcast(true)
+				server.setMulticastTTL(128);
+				var message = new Buffer("debug/" + serverPort + "/" + manifest.name + "/" + args.levelEditorEnabled);
+				server.send(message, 0, message.length, 8775, args.remoteMachine);
+			});
+		} else {
+			this.opn("cwrt://localhost:" + this.serverPort + "/debug?app=" + manifest.name + "&levelEditor=" + (args.levelEditorEnabled || true));
+		}
 
 		// we just start to run until we hit a breakpoint or an exception
 		this.continueRequest(<DebugProtocol.ContinueResponse>response, { threadId: ClockworkDebugSession.THREAD_ID });
@@ -333,7 +346,7 @@ class ClockworkDebugSession extends DebugSession {
 
 
 	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-		var session=this;
+		var session = this;
 		this.socketEmit('eval', { expression: args.expression, id: this.evalId });
 		this.pendingEval[this.evalId] = function (result) {
 			response.body = {

@@ -102,6 +102,11 @@
                 "type": "boolean",
                 "description": "Enable the level editor.",
                 "default": true
+              },
+              "remoteMachine": {
+                "type": "string",
+                "description": "The IP address of the remote machine.",
+                "default": null
               }
             }
           }
