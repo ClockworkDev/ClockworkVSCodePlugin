@@ -2,7 +2,7 @@
   "name": "clockwork",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.1.14",
+  "version": "0.2.0",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -37,7 +37,7 @@
         "command": "extension.deployPackage",
         "title": "Deploy Clockwork project"
       },
-            {
+      {
         "command": "extension.deployPackageRemote",
         "title": "Deploy Clockwork project to remote machine"
       },
