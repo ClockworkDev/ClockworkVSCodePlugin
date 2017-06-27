@@ -1,6 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 var vscode = require('vscode');
+
+
 var exec = require('child_process').exec;
 var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/", function (data, callback) {
     var requiredData = [];
@@ -37,8 +39,6 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
         vscode.window.showErrorMessage(msg);
     });
 
-
-
 const initialConfigurations = {
     version: '0.1.0',
     configurations: [
@@ -73,6 +73,7 @@ var Server = function () {
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 function activate(context) {
+
     var deployServer = null;
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -130,7 +131,7 @@ function activate(context) {
                 server.bind(function () {
                     server.setBroadcast(true)
                     server.setMulticastTTL(128);
-                    var message = new Buffer("deployPackage/"+serverPort);
+                    var message = new Buffer("deployPackage/" + serverPort);
                     server.send(message, 0, message.length, 8775, "224.0.0.1");
                 });
             });
@@ -240,9 +241,11 @@ function activate(context) {
 
 
 }
-exports.activate = activate;
 
 // this method is called when your extension is deactivated
 function deactivate() {
 }
+
+exports.activate = activate;
+
 exports.deactivate = deactivate;
