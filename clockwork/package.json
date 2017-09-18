@@ -1,8 +1,9 @@
 {
   "name": "clockwork",
+  "icon":"https://raw.githubusercontent.com/ClockworkDev/ClockworkVSCodePlugin/master/clockwork/icon.png",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -128,17 +129,20 @@
     "@types/es6-collections": "^0.5.29"
   },
   "dependencies": {
+    "@types/es6-collections": "^0.5.31",
+    "@types/node": "^6.0.88",
     "acorn": "^4.0.11",
-    "clockwork-tools": "^1.8.5",
-    "clockwork-uwp-bridge": "^0.1.3",
-    "clockwork-web-bridge": "^0.2.13",
+    "clockwork-tools": "^1.8.7",
+    "clockwork-uwp-bridge": "^0.1.5",
+    "clockwork-web-bridge": "^0.2.16",
     "dgram": "^1.0.1",
-    "express": "^4.15.2",
+    "express": "^4.15.4",
     "opn": "^4.0.2",
     "request": "^2.81.0",
     "socket.io": "^1.7.3",
-    "typescript": "^2.0.10",
-    "vscode-debugadapter": "^1.17.0",
-    "vscode-debugprotocol": "^1.17.0"
+    "typescript": "^2.5.2",
+    "vscode": "^1.1.5",
+    "vscode-debugadapter": "^1.23.0",
+    "vscode-debugprotocol": "^1.23.0"
   }
 }

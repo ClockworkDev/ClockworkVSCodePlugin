@@ -1,4 +1,5 @@
-# Clockwork VS Code extension
+# Clockwork extension for Visual Studio Code
 
-## What is this extension
-This extension allows you to create, package and debug games for the Clockwork platform, more info coming soon...
+## This extension allows you to create, package and debug games for the Clockwork platform.
+
+### Please head to the [Clockwork platform webpage](http://clockwork.js.org/) to learn more and take a look at the documentaion
