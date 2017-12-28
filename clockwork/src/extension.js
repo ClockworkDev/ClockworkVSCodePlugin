@@ -36,6 +36,9 @@ var clockworkTools = require('clockwork-tools')(vscode.workspace.rootPath + "/",
     // vscode.window.showInformationMessage(msg);
 },
     function (msg) {
+        vscode.window.showInformationMessage(msg);
+    },
+    function (msg) {
         vscode.window.showErrorMessage(msg);
     });
 
@@ -86,7 +89,6 @@ function activate(context) {
         var thisExtension = vscode.extensions.getExtension('arcadio.clockwork');
         vscode.window.showInputBox({ prompt: "What is the name of your proyect?" }).then(function (name) {
             clockworkTools.createProject(name);
-            vscode.window.showInformationMessage(`Project ${name} created successfully`);
         })
     });
     context.subscriptions.push(disposable);
@@ -97,9 +99,44 @@ function activate(context) {
     }
 
     disposable = vscode.commands.registerCommand('extension.buildProject', function () {
-        buildProject(function (name) {
-            vscode.window.showInformationMessage(`Project built successfully at ${name}`);
-        });
+        buildProject();
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.listPackages', function () {
+        clockworkTools.listPackages();
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.addPackage', function () {
+        vscode.window.showInputBox({ prompt: "Package name:" }).then(function (name) {
+            vscode.window.showInputBox({ prompt: "Package version (press Esc to choose the latest):" }).then(function (version) {
+                clockworkTools.addPackage(name, version);
+            })
+        })
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.updatePackage', function () {
+        vscode.window.showInputBox({ prompt: "Package name:" }).then(function (name) {
+            clockworkTools.updatePackage(name);
+        })
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.register', function () {
+        vscode.window.showInputBox({ prompt: "Choose an username:" }).then(function (username) {
+            vscode.window.showInputBox({ prompt: "Choose a password:" }).then(function (password) {
+                vscode.window.showInputBox({ prompt: "Your email:" }).then(function (email) {
+                    clockworkTools.register(username, password, email);
+                })
+            })
+        })
+    });
+    context.subscriptions.push(disposable);
+
+    disposable = vscode.commands.registerCommand('extension.tryPublish', function () {
+        //TODO
     });
     context.subscriptions.push(disposable);
 
