@@ -1,9 +1,9 @@
 {
   "name": "clockwork",
-  "icon":"https://raw.githubusercontent.com/ClockworkDev/ClockworkVSCodePlugin/master/clockwork/icon.png",
+  "icon": "icon.png",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -15,6 +15,11 @@
   "activationEvents": [
     "onCommand:extension.createProject",
     "onCommand:extension.buildProject",
+    "onCommand:extension.listPackages",
+    "onCommand:extension.addPackage",
+    "onCommand:extension.updatePackage",
+    "onCommand:extension.register",
+    "onCommand:extension.tryPublish",
     "onCommand:extension.deployPackage",
     "onCommand:extension.deployPackageRemote",
     "onCommand:extension.provideInitialConfigurations",
@@ -33,6 +38,26 @@
       {
         "command": "extension.buildProject",
         "title": "Build Clockwork project"
+      },
+      {
+        "command": "extension.listPackages",
+        "title": "List available Clockwork packages"
+      },
+      {
+        "command": "extension.addPackage",
+        "title": "Add Clockwork package as dependency"
+      },
+      {
+        "command": "extension.updatePackage",
+        "title": "Update Clockwork package dependency"
+      },
+      {
+        "command": "extension.register",
+        "title": "Register a Clockwork developer account"
+      },
+      {
+        "command": "extension.tryPublish",
+        "title": "Publish Clockwork package in the repository"
       },
       {
         "command": "extension.deployPackage",
@@ -132,7 +157,7 @@
     "@types/es6-collections": "^0.5.31",
     "@types/node": "^6.0.88",
     "acorn": "^4.0.11",
-    "clockwork-tools": "^1.8.7",
+    "clockwork-tools": "^1.9.2",
     "clockwork-uwp-bridge": "^0.1.5",
     "clockwork-web-bridge": "^0.2.16",
     "dgram": "^1.0.1",

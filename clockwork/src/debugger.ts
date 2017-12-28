@@ -383,7 +383,7 @@ class ClockworkParser {
 		this.path = path;
 		this.ast = acorn.parse(content, { locations: true });
 		that.ast.body.forEach(function (expression) {
-			if (expression.type == "ExpressionStatement" && expression.expression.callee.property.name == "register" && expression.expression.callee.object.property.name == "components" && expression.expression.callee.object.object.name == "CLOCKWORKRT") {
+			if (expression.type == "ExpressionStatement" && expression.expression.callee.property && expression.expression.callee.property.name == "register" && expression.expression.callee.object.property && expression.expression.callee.object.property.name == "components" && expression.expression.callee.object.object && expression.expression.callee.object.object.name == "CLOCKWORKRT") {
 				if (expression.expression.arguments[0].type == "ArrayExpression") {
 					expression.expression.arguments[0].elements.forEach(function (component) {
 						var currentComponentName = "";
