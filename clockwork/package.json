@@ -3,7 +3,7 @@
   "icon": "icon.png",
   "displayName": "Clockwork",
   "description": "Develop for the Clockwork platform",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "publisher": "arcadio",
   "engines": {
     "vscode": "^1.5.0"
@@ -166,8 +166,11 @@
     "request": "^2.81.0",
     "socket.io": "^1.7.3",
     "typescript": "^2.5.2",
-    "vscode": "^1.1.5",
     "vscode-debugadapter": "^1.23.0",
     "vscode-debugprotocol": "^1.23.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ClockworkDev/ClockworkVSCodePlugin.git"
   }
 }
